@@ -1,4 +1,5 @@
 #include "Server.h"
+#include "ThreadPool.h"
 #include <iostream>
 #include <sstream>
 
@@ -29,6 +30,9 @@ void Server::start() {
     bind(server_fd, (struct sockaddr*)&address, sizeof(address));
     listen(server_fd, 3);
     std::cout << "Server listening on port " << port << std::endl;
+    
+    ThreadPool pool(4); // 4 worker threads
+    
     while(true) {
         sockaddr_in client_addr;
 #ifdef _WIN32
@@ -38,7 +42,9 @@ void Server::start() {
         socklen_t addrlen = sizeof(client_addr);
         int client_socket = accept(server_fd, (struct sockaddr*)&client_addr, &addrlen);
 #endif
-        handle_client(client_socket);
+        pool.enqueue([this, client_socket] {
+            this->handle_client(client_socket);
+        });
     }
 }
 
