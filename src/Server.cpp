@@ -62,7 +62,7 @@ void Server::handle_client(int client_socket) {
     if (cmd == "SET") {
         std::string key, val;
         iss >> key >> val;
-        cache.set(key, val);
+        std::string ex, ttl_str; int ttl = 0; if (iss >> ex >> ttl_str && ex == `"EX`") ttl = std::stoi(ttl_str); cache.set(key, val, ttl);
     } else if (cmd == "GET") {
         std::string key;
         iss >> key;
@@ -77,4 +77,5 @@ void Server::handle_client(int client_socket) {
     close(client_socket);
 #endif
 }
+
 
