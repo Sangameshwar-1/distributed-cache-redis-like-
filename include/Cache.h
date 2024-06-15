@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <fstream>
 
 struct CacheItem {
     std::string key;
@@ -23,6 +24,10 @@ private:
     void evict();
     void cleaner_loop();
 public:
+    void snapshot(const std::string& filename);
+    void load_snapshot(const std::string& filename);
+    void append_aof(const std::string& cmd);
+
     Cache();
     ~Cache();
     void set(const std::string& key, const std::string& value, int ttl_sec = 0);
@@ -32,4 +37,5 @@ public:
     void clear();
     size_t size();
 };
+
 

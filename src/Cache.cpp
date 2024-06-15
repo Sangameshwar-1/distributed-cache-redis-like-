@@ -39,6 +39,8 @@ void Cache::set(const std::string& key, const std::string& value, int ttl_sec) {
     }
     lru_list.push_front({key, value, expiry});
     store[key] = lru_list.begin();
+    append_aof("SET " + key + " " + value);
+
 }
 std::string Cache::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mtx);
@@ -76,5 +78,29 @@ void Cache::clear() {
 size_t Cache::size() {
     std::lock_guard<std::mutex> lock(mtx);
     return store.size();
+}
+
+
+void Cache::snapshot(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(mtx);
+    std::ofstream out(filename, std::ios::binary);
+    for (const auto& item : lru_list) {
+        out << item.key << " " << item.value << " " << item.expiry << "\\n";
+    }
+}
+
+void Cache::load_snapshot(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(mtx);
+    std::ifstream in(filename, std::ios::binary);
+    std::string k, v; long long exp;
+    while (in >> k >> v >> exp) {
+        lru_list.push_front({k, v, exp});
+        store[k] = lru_list.begin();
+    }
+}
+
+void Cache::append_aof(const std::string& cmd) {
+    std::ofstream out("aof.log", std::ios::app);
+    out << cmd << "\\n";
 }
 
