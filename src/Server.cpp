@@ -62,12 +62,31 @@ void Server::handle_client(int client_socket) {
     if (cmd == "SET") {
         std::string key, val;
         iss >> key >> val;
-        std::string ex, ttl_str; int ttl = 0; if (iss >> ex >> ttl_str && ex == `"EX`") ttl = std::stoi(ttl_str); cache.set(key, val, ttl);
+        std::string ex, ttl_str; int ttl = 0; if (iss >> ex >> ttl_str && ex == "EX") ttl = std::stoi(ttl_str); cache.set(key, val, ttl);
     } else if (cmd == "GET") {
         std::string key;
         iss >> key;
         std::string val = cache.get(key);
-        response = val.empty() ? "(nil)\\n" : val + "\\n";
+        response = val.empty() ? "(nil)\n" : val + "\n";
+    } else if (cmd == "SUBSCRIBE") {
+        std::string channel;
+        iss >> channel;
+        std::lock_guard<std::mutex> lock(sub_mtx);
+        subscribers[channel].push_back(client_socket);
+        response = "SUBSCRIBED\n";
+    } else if (cmd == "PUBLISH") {
+        std::string channel, msg;
+        iss >> channel >> msg;
+        std::lock_guard<std::mutex> lock(sub_mtx);
+        for (int sock : subscribers[channel]) {
+            std::string pub_msg = "MESSAGE " + channel + " " + msg + "\n";
+#ifdef _WIN32
+            send(sock, pub_msg.c_str(), pub_msg.length(), 0);
+#else
+            send(sock, pub_msg.c_str(), pub_msg.length(), 0);
+#endif
+        }
+        response = "PUBLISHED\n";
     }
 #ifdef _WIN32
     send(client_socket, response.c_str(), response.length(), 0);
@@ -77,5 +96,6 @@ void Server::handle_client(int client_socket) {
     close(client_socket);
 #endif
 }
+
 
 
