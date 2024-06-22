@@ -7,3 +7,6 @@ if(WIN32)
     target_link_libraries(cachex ws2_32)
 endif()
 
+
+add_executable(benchmark benchmarks/benchmark.cpp src/Cache.cpp)
+

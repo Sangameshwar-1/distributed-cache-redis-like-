@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <atomic>
 #include <fstream>
 
 struct CacheItem {
@@ -37,5 +38,6 @@ public:
     void clear();
     size_t size();
 };
+
 
 

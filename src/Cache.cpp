@@ -39,6 +39,7 @@ void Cache::set(const std::string& key, const std::string& value, int ttl_sec) {
     }
     lru_list.push_front({key, value, expiry});
     store[key] = lru_list.begin();
+    writes++;
     append_aof("SET " + key + " " + value);
 
 }
@@ -103,4 +104,5 @@ void Cache::append_aof(const std::string& cmd) {
     std::ofstream out("aof.log", std::ios::app);
     out << cmd << "\\n";
 }
+
 
