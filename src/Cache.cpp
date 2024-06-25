@@ -45,13 +45,13 @@ void Cache::set(const std::string& key, const std::string& value, int ttl_sec) {
 }
 std::string Cache::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mtx);
-    if (store.find(key) == store.end()) return ";
+    if (store.find(key) == store.end()) { misses++; return ""; }
     auto it = store[key];
     auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     if (it->expiry > 0 && it->expiry < now) {
         store.erase(key);
         lru_list.erase(it);
-        return ";
+        return "";
     }
     lru_list.splice(lru_list.begin(), lru_list, it);
     return it->value;

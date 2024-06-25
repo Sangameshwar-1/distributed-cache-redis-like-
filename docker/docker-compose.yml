@@ -1,0 +1,9 @@
+version: '3'
+services:
+  cachex:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "6379:6379"
+

@@ -29,6 +29,10 @@ public:
     void load_snapshot(const std::string& filename);
     void append_aof(const std::string& cmd);
 
+    std::atomic<int> hits{0};
+    std::atomic<int> misses{0};
+    std::atomic<int> writes{0};
+
     Cache();
     ~Cache();
     void set(const std::string& key, const std::string& value, int ttl_sec = 0);

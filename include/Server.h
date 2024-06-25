@@ -1,6 +1,9 @@
 #pragma once
 #include "Cache.h"
 #include <string>
+#include <vector>
+#include <unordered_map>
+#include <mutex>
 
 class Server {
 private:
