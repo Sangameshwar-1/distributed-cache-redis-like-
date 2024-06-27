@@ -1,3 +1,5 @@
+#include "Logger.h"
+#include "Config.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -24,7 +26,7 @@
 Server* global_server = nullptr;
 
 void signal_handler(int signal) {
-    std::cout << "\nCaught signal " << signal << ". Shutting down gracefully...\n";
+    Logger::info("Caught signal. Shutting down gracefully...");
     if (global_server) {
         global_server->stop();
     }
@@ -34,12 +36,12 @@ void signal_handler(int signal) {
 void load_persistence(Cache& cache) {
     std::ifstream snap("snapshot.bin");
     if (snap.good()) {
-        std::cout << "Loading snapshot...\n";
+        Logger::info("Loading snapshot...");
         cache.load_snapshot("snapshot.bin");
     }
     std::ifstream aof("aof.log");
     if (aof.good()) {
-        std::cout << "Replaying AOF...\n";
+        Logger::info("Replaying AOF...");
         std::string cmd, key, val;
         while (aof >> cmd >> key) {
             if (cmd == "SET") {
@@ -123,11 +125,12 @@ void run_client(const std::vector<int>& cluster_ports) {
 int main(int argc, char* argv[]) {
     std::signal(SIGINT, signal_handler);
 
+    Config config("cache.conf");
     bool is_server = false;
-    int port = 6379;
+    int port = config.get_int("port", 6379);
     std::string replica_host = "";
     int replica_port = 0;
-    std::vector<int> cluster_ports = {6379};
+    std::vector<int> cluster_ports = {port};
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];

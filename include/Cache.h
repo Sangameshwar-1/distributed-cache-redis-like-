@@ -2,6 +2,7 @@
 #include <string>
 #include <unordered_map>
 #include <list>
+#include <shared_mutex>
 #include <mutex>
 #include <thread>
 #include <chrono>
@@ -19,7 +20,7 @@ private:
     size_t capacity = 1000;
     std::list<CacheItem> lru_list;
     std::unordered_map<std::string, std::list<CacheItem>::iterator> store;
-    std::mutex mtx;
+    std::shared_mutex mtx;
     std::thread cleaner_thread;
     bool stop_cleaner;
     void evict();
@@ -42,6 +43,7 @@ public:
     void clear();
     size_t size();
 };
+
 
 
 

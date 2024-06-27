@@ -1,6 +1,6 @@
 #include "Server.h"
 #include "ThreadPool.h"
-#include <iostream>
+#include "Logger.h"
 #include <sstream>
 #include <cstring>
 #include <thread>
@@ -26,7 +26,7 @@ void Server::set_replicaof(const std::string& host, int port) {
 
 void Server::connect_to_master() {
     while (running) {
-        std::cout << "Connecting to master " << master_host << ":" << master_port << std::endl;
+        Logger::info("Connecting to master " + master_host + ":" + std::to_string(master_port));
 #ifdef _WIN32
         int sock = socket(AF_INET, SOCK_STREAM, 0);
 #else
@@ -38,27 +38,35 @@ void Server::connect_to_master() {
         inet_pton(AF_INET, master_host.c_str(), &serv_addr.sin_addr);
 
         if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) >= 0) {
-            std::cout << "Connected to master, sending SYNC" << std::endl;
+            Logger::info("Connected to master, sending SYNC");
             std::string sync_cmd = "SYNC\n";
             send(sock, sync_cmd.c_str(), sync_cmd.length(), 0);
             
+            std::string buffer_str;
             char buffer[1024];
             while (running) {
                 memset(buffer, 0, 1024);
                 int bytes = recv(sock, buffer, 1024, 0);
                 if (bytes <= 0) break;
                 
-                std::istringstream iss(buffer);
-                std::string cmd;
-                iss >> cmd;
-                if (cmd == "SET") {
-                    std::string key, val;
-                    iss >> key >> val;
-                    cache.set(key, val, 0);
-                } else if (cmd == "DEL") {
-                    std::string key;
-                    iss >> key;
-                    cache.del(key);
+                buffer_str.append(buffer, bytes);
+                size_t pos;
+                while ((pos = buffer_str.find('\n')) != std::string::npos) {
+                    std::string line = buffer_str.substr(0, pos);
+                    buffer_str.erase(0, pos + 1);
+                    
+                    std::istringstream iss(line);
+                    std::string cmd;
+                    iss >> cmd;
+                    if (cmd == "SET") {
+                        std::string key, val;
+                        iss >> key >> val;
+                        cache.set(key, val, 0);
+                    } else if (cmd == "DEL") {
+                        std::string key;
+                        iss >> key;
+                        cache.del(key);
+                    }
                 }
             }
         }
@@ -67,14 +75,14 @@ void Server::connect_to_master() {
 #else
         close(sock);
 #endif
-        std::this_thread::sleep_for(std::chrono::seconds(5)); // reconnect delay
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
 
 void Server::stop() {
     running = false;
     cache.snapshot("snapshot.bin");
-    std::cout << "Graceful shutdown complete. Snapshot saved." << std::endl;
+    Logger::info("Graceful shutdown complete. Snapshot saved.");
 }
 
 void Server::start() {
@@ -98,7 +106,7 @@ void Server::start() {
     address.sin_port = htons(port);
     bind(server_fd, (struct sockaddr*)&address, sizeof(address));
     listen(server_fd, 5);
-    std::cout << "Server listening on port " << port << std::endl;
+    Logger::info("Server listening on port " + std::to_string(port));
     
     ThreadPool pool(4);
     
@@ -120,70 +128,80 @@ void Server::start() {
 }
 
 void Server::handle_client(int client_socket) {
+    std::string buffer_str;
     char buffer[1024];
     while (running) {
         memset(buffer, 0, 1024);
         int valread = recv(client_socket, buffer, 1024, 0);
-        if (valread <= 0) break; // disconnect
+        if (valread <= 0) break;
         
-        std::istringstream iss(buffer);
-        std::string cmd;
-        iss >> cmd;
-        std::string response = "OK\n";
+        buffer_str.append(buffer, valread);
         
-        if (cmd == "SET") {
-            std::string key, val;
-            iss >> key >> val;
-            std::string ex, ttl_str; int ttl = 0; 
-            if (iss >> ex >> ttl_str && ex == "EX") ttl = std::stoi(ttl_str); 
-            cache.set(key, val, ttl);
-        } else if (cmd == "GET") {
-            std::string key;
-            iss >> key;
-            std::string val = cache.get(key);
-            response = val.empty() ? "(nil)\n" : val + "\n";
-        } else if (cmd == "DEL" || cmd == "DELETE") {
-            std::string key;
-            iss >> key;
-            cache.del(key);
-        } else if (cmd == "SUBSCRIBE") {
-            std::string channel;
-            iss >> channel;
-            std::lock_guard<std::mutex> lock(sub_mtx);
-            subscribers[channel].push_back(client_socket);
-            response = "SUBSCRIBED\n";
-        } else if (cmd == "PUBLISH") {
-            std::string channel, msg;
-            iss >> channel >> msg;
-            std::lock_guard<std::mutex> lock(sub_mtx);
-            for (int sock : subscribers[channel]) {
-                std::string pub_msg = "MESSAGE " + channel + " " + msg + "\n";
-                send(sock, pub_msg.c_str(), pub_msg.length(), 0);
-            }
-            response = "PUBLISHED\n";
-        } else if (cmd == "STATS") {
-            response = "Hits: " + std::to_string(cache.hits) + "\nMisses: " + std::to_string(cache.misses) + "\nWrites: " + std::to_string(cache.writes) + "\n";
-        } else if (cmd == "SYNC") {
-            // Replication sync request
-            cache.snapshot("snapshot.bin");
-            replica_sockets.push_back(client_socket);
-            response = "SYNCED\n";
-            send(client_socket, response.c_str(), response.length(), 0);
-            continue; // Keep connection open for replica updates
-        } else if (cmd == "exit" || cmd == "quit") {
-            break;
-        } else {
-            response = "Unknown command\n";
-        }
-        
-        if (cmd == "SET" || cmd == "DEL" || cmd == "DELETE") {
-            for (int r_sock : replica_sockets) {
-                send(r_sock, buffer, valread, 0);
-            }
-        }
+        size_t pos;
+        while ((pos = buffer_str.find('\n')) != std::string::npos) {
+            std::string line = buffer_str.substr(0, pos);
+            buffer_str.erase(0, pos + 1);
 
-        send(client_socket, response.c_str(), response.length(), 0);
+            std::istringstream iss(line);
+            std::string cmd;
+            iss >> cmd;
+            std::string response = "OK\n";
+            
+            if (cmd == "SET") {
+                std::string key, val;
+                iss >> key >> val;
+                std::string ex, ttl_str; int ttl = 0; 
+                if (iss >> ex >> ttl_str && ex == "EX") ttl = std::stoi(ttl_str); 
+                cache.set(key, val, ttl);
+            } else if (cmd == "GET") {
+                std::string key;
+                iss >> key;
+                std::string val = cache.get(key);
+                response = val.empty() ? "(nil)\n" : val + "\n";
+            } else if (cmd == "DEL" || cmd == "DELETE") {
+                std::string key;
+                iss >> key;
+                cache.del(key);
+            } else if (cmd == "SUBSCRIBE") {
+                std::string channel;
+                iss >> channel;
+                std::lock_guard<std::mutex> lock(sub_mtx);
+                subscribers[channel].push_back(client_socket);
+                response = "SUBSCRIBED\n";
+            } else if (cmd == "PUBLISH") {
+                std::string channel, msg;
+                iss >> channel >> msg;
+                std::lock_guard<std::mutex> lock(sub_mtx);
+                for (int sock : subscribers[channel]) {
+                    std::string pub_msg = "MESSAGE " + channel + " " + msg + "\n";
+                    send(sock, pub_msg.c_str(), pub_msg.length(), 0);
+                }
+                response = "PUBLISHED\n";
+            } else if (cmd == "STATS") {
+                response = "Hits: " + std::to_string(cache.hits) + "\nMisses: " + std::to_string(cache.misses) + "\nWrites: " + std::to_string(cache.writes) + "\n";
+            } else if (cmd == "SYNC") {
+                cache.snapshot("snapshot.bin");
+                replica_sockets.push_back(client_socket);
+                response = "SYNCED\n";
+                send(client_socket, response.c_str(), response.length(), 0);
+                continue;
+            } else if (cmd == "exit" || cmd == "quit") {
+                goto disconnect;
+            } else {
+                response = "Unknown command\n";
+            }
+            
+            if (cmd == "SET" || cmd == "DEL" || cmd == "DELETE") {
+                std::string rep_msg = line + "\n";
+                for (int r_sock : replica_sockets) {
+                    send(r_sock, rep_msg.c_str(), rep_msg.length(), 0);
+                }
+            }
+
+            send(client_socket, response.c_str(), response.length(), 0);
+        }
     }
+disconnect:
 #ifdef _WIN32
     closesocket(client_socket);
 #else

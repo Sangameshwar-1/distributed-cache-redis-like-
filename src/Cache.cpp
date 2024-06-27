@@ -10,7 +10,7 @@ Cache::~Cache() {
 void Cache::cleaner_loop() {
     while (!stop_cleaner) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
-        std::lock_guard<std::mutex> lock(mtx);
+        std::unique_lock<std::shared_mutex> lock(mtx);
         auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         for (auto it = lru_list.begin(); it != lru_list.end(); ) {
             if (it->expiry > 0 && it->expiry < now) {
@@ -29,7 +29,7 @@ void Cache::evict() {
     lru_list.pop_back();
 }
 void Cache::set(const std::string& key, const std::string& value, int ttl_sec) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     long long expiry = ttl_sec > 0 ? now + ttl_sec : 0;
     if (store.find(key) != store.end()) {
@@ -44,7 +44,7 @@ void Cache::set(const std::string& key, const std::string& value, int ttl_sec) {
 
 }
 std::string Cache::get(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     if (store.find(key) == store.end()) { misses++; return ""; }
     auto it = store[key];
     auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -57,14 +57,14 @@ std::string Cache::get(const std::string& key) {
     return it->value;
 }
 bool Cache::del(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     if (store.find(key) == store.end()) return false;
     lru_list.erase(store[key]);
     store.erase(key);
     return true;
 }
 bool Cache::exists(const std::string& key) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     if (store.find(key) == store.end()) return false;
     auto it = store[key];
     auto now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -72,18 +72,18 @@ bool Cache::exists(const std::string& key) {
     return true;
 }
 void Cache::clear() {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     store.clear();
     lru_list.clear();
 }
 size_t Cache::size() {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     return store.size();
 }
 
 
 void Cache::snapshot(const std::string& filename) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     std::ofstream out(filename, std::ios::binary);
     for (const auto& item : lru_list) {
         out << item.key << " " << item.value << " " << item.expiry << "\\n";
@@ -91,7 +91,7 @@ void Cache::snapshot(const std::string& filename) {
 }
 
 void Cache::load_snapshot(const std::string& filename) {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::unique_lock<std::shared_mutex> lock(mtx);
     std::ifstream in(filename, std::ios::binary);
     std::string k, v; long long exp;
     while (in >> k >> v >> exp) {
@@ -104,5 +104,6 @@ void Cache::append_aof(const std::string& cmd) {
     std::ofstream out("aof.log", std::ios::app);
     out << cmd << "\\n";
 }
+
 
 
