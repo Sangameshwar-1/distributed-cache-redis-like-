@@ -25,7 +25,7 @@ public:
         }
     }
     std::string get_node(const std::string& key) {
-        if (ring.empty()) return ";
+        if (ring.empty()) return "";
         size_t hash = hasher(key);
         auto it = ring.lower_bound(hash);
         if (it == ring.end()) it = ring.begin();
