@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CacheX Performance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center mb-10">
+            <div>
+                <h1 class="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">CacheX</h1>
+                <p class="text-slate-400 mt-1">Distributed In-Memory Cache Engine</p>
+            </div>
+            <div id="status-badge" class="px-4 py-2 rounded-full font-medium text-sm bg-slate-800 text-slate-300 border border-slate-700">
+                Connecting...
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="glass-card p-6">
+                <p class="text-slate-400 text-sm font-medium mb-1">Hit Rate</p>
+                <div class="flex items-end gap-2">
+                    <span id="stat-hitrate" class="text-4xl font-bold text-emerald-400">0%</span>
+                </div>
+            </div>
+            <div class="glass-card p-6">
+                <p class="text-slate-400 text-sm font-medium mb-1">Memory Usage</p>
+                <div class="flex items-end gap-2">
+                    <span id="stat-size" class="text-4xl font-bold text-amber-400">0</span>
+                    <span class="text-slate-500 mb-1">/ 1000 keys</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-1.5 mt-4">
+                    <div id="bar-size" class="bg-amber-400 h-1.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="glass-card p-6">
+                <p class="text-slate-400 text-sm font-medium mb-1">Total Operations</p>
+                <div class="flex items-end gap-2">
+                    <span id="stat-ops" class="text-4xl font-bold text-blue-400">0</span>
+                </div>
+            </div>
+            <div class="glass-card p-6">
+                <p class="text-slate-400 text-sm font-medium mb-1">Writes</p>
+                <div class="flex items-end gap-2">
+                    <span id="stat-writes" class="text-4xl font-bold text-purple-400">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="glass-card p-6 lg:col-span-2">
+                <h3 class="text-lg font-medium text-slate-200 mb-4">Operations over Time (Hits vs Misses)</h3>
+                <canvas id="opsChart" height="100"></canvas>
+            </div>
+            <div class="glass-card p-6">
+                <h3 class="text-lg font-medium text-slate-200 mb-4">Hit/Miss Ratio</h3>
+                <div class="relative h-48 w-full flex justify-center">
+                    <canvas id="ratioChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart configuration
+        const ctxOps = document.getElementById('opsChart').getContext('2d');
+        const ctxRatio = document.getElementById('ratioChart').getContext('2d');
+        
+        const opsChart = new Chart(ctxOps, {
+            type: 'line',
+            data: {
+                labels: Array(20).fill(''),
+                datasets: [
+                    { label: 'Hits', borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', data: Array(20).fill(0), fill: true, tension: 0.4 },
+                    { label: 'Misses', borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', data: Array(20).fill(0), fill: true, tension: 0.4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { grid: { display: false } }
+                },
+                animation: false,
+                plugins: { legend: { labels: { color: '#cbd5e1' } } }
+            }
+        });
+
+        const ratioChart = new Chart(ctxRatio, {
+            type: 'doughnut',
+            data: {
+                labels: ['Hits', 'Misses'],
+                datasets: [{
+                    data: [0, 1],
+                    backgroundColor: ['#34d399', '#f87171'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } } }
+            }
+        });
+
+        let prevHits = 0;
+        let prevMisses = 0;
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                
+                const statusBadge = document.getElementById('status-badge');
+                if (data.status === 'online') {
+                    statusBadge.textContent = '● Online';
+                    statusBadge.className = 'px-4 py-2 rounded-full font-medium text-sm bg-emerald-900/50 text-emerald-400 border border-emerald-800';
+                    
+                    document.getElementById('stat-hitrate').textContent = `${data.hit_rate}%`;
+                    document.getElementById('stat-size').textContent = data.size;
+                    document.getElementById('bar-size').style.width = `${(data.size / data.capacity) * 100}%`;
+                    document.getElementById('stat-ops').textContent = data.total_ops.toLocaleString();
+                    document.getElementById('stat-writes').textContent = data.writes.toLocaleString();
+                    
+                    // Update ops line chart
+                    const hitDelta = Math.max(0, data.hits - prevHits);
+                    const missDelta = Math.max(0, data.misses - prevMisses);
+                    prevHits = data.hits;
+                    prevMisses = data.misses;
+                    
+                    opsChart.data.datasets[0].data.shift();
+                    opsChart.data.datasets[0].data.push(hitDelta);
+                    opsChart.data.datasets[1].data.shift();
+                    opsChart.data.datasets[1].data.push(missDelta);
+                    opsChart.update();
+                    
+                    // Update ratio donut chart
+                    ratioChart.data.datasets[0].data = [data.hits, data.misses];
+                    ratioChart.update();
+                } else {
+                    statusBadge.textContent = '○ Offline';
+                    statusBadge.className = 'px-4 py-2 rounded-full font-medium text-sm bg-red-900/50 text-red-400 border border-red-800';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Fetch immediately, then every 2 seconds
+        fetchStats();
+        setInterval(fetchStats, 2000);
+    </script>
+</body>
+</html>

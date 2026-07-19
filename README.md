@@ -9,6 +9,7 @@
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/tests-passing-brightgreen.svg" alt="Tests">
   <img src="https://img.shields.io/badge/docker-ready-2496ED.svg" alt="Docker">
+  <img src="https://img.shields.io/badge/flask-dashboard-orange.svg" alt="Flask Dashboard">
 </p>
 
 ---
@@ -37,102 +38,17 @@ CacheX is a Redis-inspired distributed caching system designed to explore and im
 | **Distributed** | Master-Replica Sync | Replicas connect to master, receive initial snapshot, then stream live writes |
 | **Distributed** | Consistent Hashing | Client-side sharding distributes keys across cluster nodes using a virtual-node hash ring |
 | **Messaging** | Pub/Sub | `SUBSCRIBE` / `PUBLISH` for real-time inter-client messaging |
-| **Observability** | Metrics | Atomic hit/miss/write counters exposed via `STATS` command |
+| **Observability** | Metrics Dashboard | **NEW!** Real-time Flask UI to monitor hit rates, memory, and throughput |
 | **Observability** | Structured Logging | Thread-safe timestamped logging with `INFO`, `WARN`, `ERROR` levels |
 | **Config** | File-based Config | `cache.conf` file for port, memory limits, log level, AOF strategy |
-| **DevOps** | Docker | Single-command containerized builds |
-| **DevOps** | CI/CD | GitHub Actions pipeline for automated builds on push/PR |
-| **Testing** | Unit Tests | Catch2-based test suite covering cache operations, eviction, and hash ring distribution |
-| **Benchmarks** | Performance | 100K SET operations benchmark included |
+| **Testing** | 17-Level Test Suite | Comprehensive Catch2 and Python automated testing (functional, load, stress) |
 
 ---
 
-## Architecture
+## Architecture Deep-Dive
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CacheX Server                            │
-│                                                                 │
-│  ┌──────────┐    ┌──────────────┐    ┌────────────────────┐    │
-│  │  TCP     │───▶│  Thread Pool │───▶│  Command Parser    │    │
-│  │  Listener│    │  (4 workers) │    │  SET/GET/DEL/...   │    │
-│  └──────────┘    └──────────────┘    └─────────┬──────────┘    │
-│                                                │               │
-│                                     ┌──────────▼──────────┐    │
-│                                     │    Cache Engine      │    │
-│                                     │                      │    │
-│                                     │  ┌────────────────┐  │    │
-│                                     │  │ unordered_map  │  │    │
-│                                     │  │   (O(1) ops)   │  │    │
-│                                     │  └───────┬────────┘  │    │
-│                                     │          │           │    │
-│                                     │  ┌───────▼────────┐  │    │
-│                                     │  │  LRU List      │  │    │
-│                                     │  │ (doubly-linked) │  │    │
-│                                     │  └────────────────┘  │    │
-│                                     └──────────┬──────────┘    │
-│                                                │               │
-│                            ┌───────────────────┼──────────┐    │
-│                            │                   │          │    │
-│                     ┌──────▼─────┐  ┌──────────▼───┐ ┌────▼──┐│
-│                     │ Snapshot   │  │  AOF Logger  │ │ TTL   ││
-│                     │ (binary)   │  │  (aof.log)   │ │Sweeper││
-│                     └────────────┘  └──────────────┘ └───────┘│
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    Distributed Layer                             │
-│                                                                 │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │  Node 6379   │    │  Node 6380   │    │  Node 6381   │      │
-│  │  (Master)    │───▶│  (Replica)   │    │  (Replica)   │      │
-│  └──────┬───────┘    └──────────────┘    └──────────────┘      │
-│         │                                                       │
-│  ┌──────▼────────────────────────────────────────────────┐      │
-│  │              Consistent Hash Ring                     │      │
-│  │   100 virtual nodes per physical node                 │      │
-│  │   Keys routed via std::hash → ring.lower_bound()     │      │
-│  └───────────────────────────────────────────────────────┘      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Project Structure
-
-```
-cachex/
-├── include/
-│   ├── Cache.h              # Core cache engine with LRU + TTL
-│   ├── Server.h             # Multi-threaded TCP server
-│   ├── ThreadPool.h         # Fixed-size thread pool
-│   ├── ConsistentHash.h     # Hash ring for client-side sharding
-│   ├── Logger.h             # Structured logging
-│   └── Config.h             # Configuration file parser
-├── src/
-│   ├── main.cpp             # Entry point, CLI arg parsing, REPL client
-│   ├── Cache.cpp            # Cache implementation
-│   ├── Server.cpp           # Server implementation with replication
-│   ├── Logger.cpp           # Logger implementation
-│   └── Config.cpp           # Config parser implementation
-├── tests/
-│   ├── catch.hpp            # Catch2 single-header test framework
-│   ├── test_cache.cpp       # Cache unit tests (ops, LRU eviction)
-│   └── test_hash.cpp        # Consistent hashing unit tests
-├── benchmarks/
-│   └── benchmark.cpp        # Performance benchmark (100K SETs)
-├── docker/
-│   ├── Dockerfile           # Container build
-│   └── docker-compose.yml   # Multi-container orchestration
-├── docs/
-│   └── Architecture.md      # Architecture documentation
-├── .github/workflows/
-│   └── ci.yml               # GitHub Actions CI pipeline
-├── cache.conf               # Default configuration file
-├── CMakeLists.txt           # Build system
-├── USAGE.md                 # Detailed usage guide
-└── README.md                # This file
-```
+We've prepared a comprehensive technical deep-dive into the internals of CacheX. 
+👉 [**Read the Architecture Documentation**](Architecture.md) to learn how the Thread Pool, LRU Eviction, and Consistent Hashing algorithms are implemented.
 
 ---
 
@@ -142,14 +58,12 @@ cachex/
 
 - **C++17** compiler (GCC 7+, Clang 5+, MSVC 2017+)
 - **CMake** 3.10+
-- **Docker** (optional, for containerized builds)
+- **Docker** (optional)
+- **Python 3** (for the UI Dashboard)
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/Sangameshwar-1/distributed-cache-redis-like-.git
-cd distributed-cache-redis-like-
-
 cmake .
 make
 ```
@@ -160,31 +74,55 @@ make
 ./cachex --server
 ```
 
-### Run the Client
+### Run the Client REPL
 
 ```bash
 ./cachex
 ```
 
 ```
-cachex> SET name Alice
+cachex> SET event_123 "base64_data" EX 300
 OK
-cachex> GET name
-Alice
-cachex> SET session abc123 EX 30
-OK
+cachex> GET event_123
+"base64_data"
 cachex> STATS
 Hits: 1
 Misses: 0
-Writes: 2
-cachex> exit
+Writes: 1
 ```
 
-### Run with Docker
+### Run the Flask Performance Dashboard
+
+We've built a sleek, real-time UI dashboard to monitor CacheX operations (perfect for visualizing MERN stack traffic).
+
+1. Install dependencies:
+```bash
+pip install -r dashboard/requirements.txt
+```
+2. Start the dashboard:
+```bash
+python dashboard/app.py
+```
+3. Open `http://localhost:5050` in your browser.
+
+---
+
+## Docker Integration
+
+CacheX is fully containerized and easily drops into existing projects.
 
 ```bash
 docker build -t cachex -f docker/Dockerfile .
 docker run -p 6379:6379 cachex
+```
+
+In your `docker-compose.yml`:
+```yaml
+services:
+  cachex:
+    image: cachex
+    ports:
+      - "6379:6379"
 ```
 
 ---
@@ -196,42 +134,12 @@ docker run -p 6379:6379 cachex
 | `SET` | `SET <key> <value> [EX <seconds>]` | Store a key-value pair with optional TTL |
 | `GET` | `GET <key>` | Retrieve the value for a key |
 | `DEL` | `DEL <key>` | Delete a key |
+| `EXISTS` | `EXISTS <key>` | Check if a key is in memory |
+| `CLEAR` | `CLEAR` | Evict all keys |
+| `SIZE` | `SIZE` | Get total number of stored keys |
 | `STATS` | `STATS` | Show hit/miss/write counters |
 | `SUBSCRIBE` | `SUBSCRIBE <channel>` | Subscribe to a Pub/Sub channel |
 | `PUBLISH` | `PUBLISH <channel> <message>` | Publish a message to a channel |
-| `SYNC` | `SYNC` | (Internal) Trigger replication snapshot |
-| `exit` | `exit` | Disconnect from the server |
-
----
-
-## Configuration
-
-CacheX reads settings from `cache.conf` at startup:
-
-```ini
-# Server port
-port=6379
-
-# Maximum number of cached entries
-max_memory=1024
-
-# Logging level
-loglevel=INFO
-
-# AOF sync strategy
-aof_sync_strategy=everysec
-```
-
----
-
-## CLI Arguments
-
-| Flag | Description | Example |
-|---|---|---|
-| `--server` | Start in server mode | `./cachex --server` |
-| `--port <N>` | Listen on a specific port | `./cachex --server --port 6380` |
-| `--replicaof <host> <port>` | Start as a replica of the given master | `./cachex --server --port 6380 --replicaof 127.0.0.1 6379` |
-| `--cluster <ports>` | Connect client to multiple nodes | `./cachex --cluster 6379,6380,6381` |
 
 ---
 
@@ -243,34 +151,11 @@ Run the Catch2 unit test suite:
 ./test_cache
 ```
 
-```
-===============================================================================
-All tests passed (7 assertions in 3 test cases)
-```
-
-Run the performance benchmark:
+Run the performance benchmark (100,000 SET operations):
 
 ```bash
 ./benchmark
 ```
-
-```
-100K SETs took 2376ms
-```
-
----
-
-## Key Design Decisions
-
-| Decision | Rationale |
-|---|---|
-| `std::unordered_map` for storage | O(1) average-case lookup, insert, and delete |
-| `std::list` for LRU ordering | O(1) splice-to-front on access, O(1) eviction from back |
-| `std::shared_mutex` over `std::mutex` | Concurrent reads don't block each other; only writes acquire exclusive locks |
-| Background cleaner thread | TTL expiration runs asynchronously to avoid blocking client requests |
-| Consistent Hashing with 100 virtual nodes | Minimizes key redistribution when nodes join or leave the cluster |
-| Newline-delimited TCP framing | Simple, debuggable protocol; compatible with `telnet` and `nc` |
-| Catch2 single-header | Zero-dependency test framework that compiles alongside the project |
 
 ---
 
