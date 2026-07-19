@@ -86,7 +86,7 @@ void Cache::snapshot(const std::string& filename) {
     std::unique_lock<std::shared_mutex> lock(mtx);
     std::ofstream out(filename, std::ios::binary);
     for (const auto& item : lru_list) {
-        out << item.key << " " << item.value << " " << item.expiry << "\\n";
+        out << item.key << " " << item.value << " " << item.expiry << "\n";
     }
 }
 
@@ -102,7 +102,7 @@ void Cache::load_snapshot(const std::string& filename) {
 
 void Cache::append_aof(const std::string& cmd) {
     std::ofstream out("aof.log", std::ios::app);
-    out << cmd << "\\n";
+    out << cmd << "\n";
 }
 
 

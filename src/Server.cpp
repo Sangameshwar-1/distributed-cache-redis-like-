@@ -177,6 +177,14 @@ void Server::handle_client(int client_socket) {
                     send(sock, pub_msg.c_str(), pub_msg.length(), 0);
                 }
                 response = "PUBLISHED\n";
+            } else if (cmd == "EXISTS") {
+                std::string key;
+                iss >> key;
+                response = cache.exists(key) ? "1\n" : "0\n";
+            } else if (cmd == "CLEAR") {
+                cache.clear();
+            } else if (cmd == "SIZE") {
+                response = std::to_string(cache.size()) + "\n";
             } else if (cmd == "STATS") {
                 response = "Hits: " + std::to_string(cache.hits) + "\nMisses: " + std::to_string(cache.misses) + "\nWrites: " + std::to_string(cache.writes) + "\n";
             } else if (cmd == "SYNC") {
